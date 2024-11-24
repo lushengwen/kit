@@ -57,15 +57,15 @@ PUBLIC_RULES=(
 )
 
 # 如果脚本参数中提供了附加 IP 地址，则将其追加到 ALLOWED_IPS
-if [ -n "\$1" ]; then
-    IFS=',' read -r -a additional_ips <<< "\$1"
-    ALLOWED_IPS+=("\${additional_ips[@]}")
+if [ -n "$1" ]; then
+    IFS=',' read -r -a additional_ips <<< "$1"
+    ALLOWED_IPS+=("${additional_ips[@]}")
 fi
 
 # 如果脚本参数中提供了附加服务规则，则将其追加到 PUBLIC_RULES
-if [ -n "\$2" ]; then
-    IFS=',' read -r -a additional_rules <<< "\$2"
-    PUBLIC_RULES+=("\${additional_rules[@]}")
+if [ -n "$2" ]; then
+    IFS=',' read -r -a additional_rules <<< "$2"
+    PUBLIC_RULES+=("${additional_rules[@]}")
 fi
 
 # 包管理工具（自动检测 dnf 或 yum）
@@ -89,10 +89,14 @@ if getenforce | grep -q "Enforcing"; then
 fi
 
 backup_firewalld_config() {
-    echo "${green}备份现有防火墙配置到 $backup_dir${reset}"
-    sudo mkdir -p "$backup_dir"
-    sudo cp -r /etc/firewalld/* "$backup_dir"
-    echo "${green}备份完成，备份目录：$backup_dir${reset}"
+    if [ ! -d "/etc/firewalld" ]; then
+        echo "${red}/etc/firewalld 配置目录不存在。请确认 firewalld 已安装并正确配置。${reset}"
+    else
+        echo "${green}备份现有防火墙配置到 $backup_dir${reset}"
+        sudo mkdir -p "$backup_dir"
+        sudo cp -r /etc/firewalld/* "$backup_dir"
+        echo "${green}备份完成，备份目录：$backup_dir${reset}"
+    fi
 }
 
 # 用户交互，是否创建和配置公开区域
@@ -124,8 +128,10 @@ zones=$(firewall-cmd --get-zones)
 # === 分析规则 ===
 has_custom_rules=0
 IFS=' ' read -r -a default_services_arr <<< "$default_services"
+echo "${green}重载防火墙配置...${reset}"
+firewall-cmd --reload
 for zone in $zones; do
-    echo "${green}检查区域：$zone${reset}"
+    echo "检查区域：$zone"
 
     # 检查是否为自定义区域
     if [[ ! " ${default_zones[@]} " =~ " $zone " ]]; then
@@ -165,7 +171,7 @@ for zone in $zones; do
 
 done
 
-# === 根据检查结果决定是否重装 firewalld ===
+# === 根据检查结果决定是否重置 firewalld ===
 if [ $has_custom_rules -eq 1 ]; then
     echo "${red}检测到自定义永久规则，准备重置 firewalld规则...${reset}"
     sudo systemctl stop firewalld
@@ -227,8 +233,6 @@ if [ "$CREATE_PUBLIC_ZONE" == "y" ] || [ "$CREATE_PUBLIC_ZONE" == "Y" ]; then
 fi
 echo "${green}信任区域：${reset}"
 firewall-cmd --list-all --zone=trusted_zone
-echo "${green}默认区域：${reset}"
-firewall-cmd --get-default-zone
 echo "${green}活动区域及其分配的网络接口：${reset}"
 firewall-cmd --get-active-zones
 echo "${green}防火墙规则配置完成。${reset}"

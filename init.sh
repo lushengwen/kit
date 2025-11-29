@@ -124,6 +124,27 @@ if ! firewall-cmd --reload; then
   exit 1
 fi
 
+# 如果启用了 SELinux，则为新的 SSH 端口添加 SELinux 端口规则
+if command -v getenforce &>/dev/null; then
+  SELINUX_MODE=$(getenforce)
+  if [ "$SELINUX_MODE" != "Disabled" ]; then
+    # 确保 semanage 可用
+    if ! command -v semanage &>/dev/null; then
+      echo "${red}未找到 semanage，正在安装 SELinux 管理工具...${reset}"
+      yum install -y policycoreutils-python-utils 2>/dev/null || \
+      yum install -y policycoreutils-python 2>/dev/null || true
+    fi
+
+    if command -v semanage &>/dev/null; then
+      echo "${green}为 SELinux 放行 SSH 端口 $NEW_PORT...${reset}"
+      semanage port -a -t ssh_port_t -p tcp "$NEW_PORT" 2>/dev/null || \
+      semanage port -m -t ssh_port_t -p tcp "$NEW_PORT"
+    else
+      echo "${red}警告: 未能安装 semanage，SELinux 可能会阻止 SSH 使用端口 $NEW_PORT。${reset}"
+    fi
+  fi
+fi
+
 update_sshd_config() {
     local key=$1
     local value=$2
